@@ -20,6 +20,10 @@ def salvar_dados(dados):
     with open(DATA_FILE, 'w') as f:
         json.dump(dados, f, indent=2)
 
+@app.route('/')
+def home():
+    return '🚀 API Controle de Farm online!'
+
 @app.route('/salvar', methods=['POST'])
 def salvar():
     payload = request.get_json()
