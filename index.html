@@ -71,7 +71,6 @@
   <p><strong>Total Farmado:</strong> <span id="totalFarmado">0</span></p>
   <p><strong>Status:</strong> <span id="statusFarm">Pendente</span></p>
 
-  <button onclick="salvar()">Salvar</button>
   <button onclick="logout()">Sair</button>
 </div>
 
@@ -79,180 +78,122 @@
   <h2>Painel de Admin - <span id="adminName"></span></h2>
   <p>Selecione um usuário para visualizar/editar/remover:</p>
   <select id="seletorUsuarios" onchange="carregarUsuarioSelecionado()"></select><br>
-  <button onclick="removerUsuarioSelecionado()" style="background-color: #a53a3a;">Remover Jogador</button>
   <div id="adminView"></div>
-  <button onclick="salvarAdmin()">Salvar Alterações</button>
-  <button onclick="exportarCSV()">Exportar CSV</button>
   <button onclick="logout()">Sair</button>
 </div>
 
 <script>
-  const dias = 5;
-  const metaDiaria = 1600;
-  const metaTotal = dias * metaDiaria;
-  const admins = ['Nabriza', 'Liana', 'Naja'];
-  let usuarioAtual = "";
-  let visualizando = "";
+const dias = 5;
+const metaDiaria = 1600;
+const metaTotal = dias * metaDiaria;
+const admins = ['Nabriza', 'Liana', 'Naja'];
+let usuarioAtual = "";
+let visualizando = "";
 
-  function login() {
-    const nome = document.getElementById("nomeJogador").value.trim();
-    if (!nome) return;
+async function salvarDados(nome, progresso) {
+  await fetch('http://localhost:5000/salvar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nome, progresso })
+  });
+}
 
-    usuarioAtual = nome;
-
-    if (admins.includes(nome)) {
-      document.getElementById("adminName").textContent = nome;
-      document.getElementById("loginTela").style.display = "none";
-      document.getElementById("adminPanel").style.display = "block";
-      carregarListaUsuarios();
-    } else {
-      document.getElementById("nomeExibido").textContent = nome;
-      document.getElementById("loginTela").style.display = "none";
-      document.getElementById("painel").style.display = "block";
-      carregarDados(nome);
-    }
+async function carregarDados(nome) {
+  const res = await fetch(`http://localhost:5000/usuario/${nome}`);
+  if (res.ok) {
+    const data = await res.json();
+    return data[nome];
   }
+  return Array(dias).fill(0);
+}
 
-  function logout() {
-    usuarioAtual = "";
-    visualizando = "";
-    document.getElementById("painel").style.display = "none";
-    document.getElementById("adminPanel").style.display = "none";
-    document.getElementById("loginTela").style.display = "block";
-    document.getElementById("nomeJogador").value = "";
+async function carregarListaUsuarios() {
+  const res = await fetch('http://localhost:5000/listar');
+  const data = await res.json();
+  const seletor = document.getElementById("seletorUsuarios");
+  seletor.innerHTML = "";
+  Object.keys(data).forEach(nome => {
+    const opt = document.createElement("option");
+    opt.value = nome;
+    opt.textContent = nome;
+    seletor.appendChild(opt);
+  });
+  if (seletor.options.length > 0) {
+    seletor.selectedIndex = 0;
+    carregarUsuarioSelecionado();
   }
+}
 
-  function carregarListaUsuarios() {
-    const seletor = document.getElementById("seletorUsuarios");
-    seletor.innerHTML = "";
+function logout() {
+  usuarioAtual = "";
+  visualizando = "";
+  document.getElementById("painel").style.display = "none";
+  document.getElementById("adminPanel").style.display = "none";
+  document.getElementById("loginTela").style.display = "block";
+  document.getElementById("nomeJogador").value = "";
+}
 
-    for (let key in localStorage) {
-      if (key.startsWith("farm_")) {
-        const nome = key.replace("farm_", "");
-        const opt = document.createElement("option");
-        opt.value = nome;
-        opt.textContent = nome;
-        seletor.appendChild(opt);
-      }
-    }
-
-    if (seletor.options.length > 0) {
-      seletor.selectedIndex = 0;
-      carregarUsuarioSelecionado();
-    } else {
-      document.getElementById("adminView").innerHTML = "<p>Nenhum jogador encontrado.</p>";
-    }
+async function login() {
+  const nome = document.getElementById("nomeJogador").value.trim();
+  if (!nome) return;
+  usuarioAtual = nome;
+  document.getElementById("loginTela").style.display = "none";
+  if (admins.includes(nome)) {
+    document.getElementById("adminName").textContent = nome;
+    document.getElementById("adminPanel").style.display = "block";
+    await carregarListaUsuarios();
+  } else {
+    document.getElementById("nomeExibido").textContent = nome;
+    document.getElementById("painel").style.display = "block";
+    const progresso = await carregarDados(nome);
+    renderizarTabela(progresso, false);
   }
+}
 
-  function carregarUsuarioSelecionado() {
-    const nome = document.getElementById("seletorUsuarios").value;
-    visualizando = nome;
-    carregarDados(nome, true);
+function renderizarTabela(progresso, isAdmin) {
+  const destino = isAdmin ? document.getElementById("adminView") : document.getElementById("tabelaDias");
+  const nome = isAdmin ? visualizando : usuarioAtual;
+  let html = "";
+  for (let i = 0; i < dias; i++) {
+    html += `<tr>
+      <td>Dia ${i + 1}</td>
+      <td><input type="number" min="0" max="1600" value="${progresso[i]}"
+        onchange="validarLimite(this); atualizarTotal('${nome}', ${isAdmin})"
+        data-dia="${i}" data-user="${nome}"></td></tr>`;
   }
+  if (isAdmin) {
+    destino.innerHTML = `<table><thead><tr><th>Dia</th><th>Componentes</th></tr></thead><tbody>${html}</tbody></table>
+      <p><strong>Total Farmado:</strong> <span id="total-${nome}">0</span></p>
+      <p><strong>Status:</strong> <span id="status-${nome}">Pendente</span></p>`;
+  } else {
+    destino.innerHTML = html;
+  }
+  atualizarTotal(nome, isAdmin);
+}
 
-  function carregarDados(nome, isAdmin = false) {
-    const dados = JSON.parse(localStorage.getItem("farm_" + nome)) || Array(dias).fill(0);
-    if (!isAdmin) {
-      const tbody = document.getElementById("tabelaDias");
-      tbody.innerHTML = "";
-      for (let i = 0; i < dias; i++) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>Dia ${i + 1}</td>
-          <td><input type="number" min="0" max="1600" value="${dados[i]}" 
-              onchange="validarLimite(this); atualizarTotal('${nome}', false)" 
-              data-dia="${i}" data-user="${nome}"></td>`;
-        tbody.appendChild(tr);
-      }
-    } else {
-      const html = [`<table><thead><tr><th>Dia</th><th>Componentes</th></tr></thead><tbody>`];
-      for (let i = 0; i < dias; i++) {
-        html.push(`
-          <tr>
-            <td>Dia ${i + 1}</td>
-            <td><input type="number" min="0" max="1600" value="${dados[i]}" 
-                onchange="validarLimite(this); atualizarTotal('${nome}', true)" 
-                data-dia="${i}" data-user="${nome}"></td>
-          </tr>`);
-      }
-      html.push(`</tbody></table>`);
-      html.push(`<p><strong>Total Farmado:</strong> <span id="total-${nome}">0</span></p>`);
-      html.push(`<p><strong>Status:</strong> <span id="status-${nome}">Pendente</span></p>`);
-      document.getElementById("adminView").innerHTML = html.join('');
-    }
-    atualizarTotal(nome, isAdmin);
-  }
+function validarLimite(input) {
+  let valor = parseInt(input.value);
+  if (isNaN(valor) || valor < 0) input.value = 0;
+  else if (valor > 1600) input.value = 1600;
+}
 
-  function validarLimite(input) {
-    let valor = parseInt(input.value);
-    if (isNaN(valor) || valor < 0) input.value = 0;
-    else if (valor > 1600) input.value = 1600;
-  }
+async function atualizarTotal(nome, isAdmin = false) {
+  const inputs = document.querySelectorAll(`input[data-user="${nome}"]`);
+  const valores = Array.from(inputs).map(el => parseInt(el.value) || 0);
+  const total = valores.reduce((a, b) => a + b, 0);
+  await salvarDados(nome, valores);
+  const totalSpan = isAdmin ? document.getElementById(`total-${nome}`) : document.getElementById("totalFarmado");
+  const statusSpan = isAdmin ? document.getElementById(`status-${nome}`) : document.getElementById("statusFarm");
+  if (totalSpan) totalSpan.textContent = total;
+  if (statusSpan) statusSpan.textContent = total >= metaTotal ? "OK" : "Pendente";
+}
 
-  function salvar() {
-    const valores = [];
-    for (let i = 0; i < dias; i++) {
-      const val = document.querySelector(`input[data-dia="${i}"][data-user="${usuarioAtual}"]`);
-      valores.push(parseInt(val?.value) || 0);
-    }
-    localStorage.setItem("farm_" + usuarioAtual, JSON.stringify(valores));
-    alert("Progresso salvo!");
-  }
-
-  function salvarAdmin() {
-    if (!visualizando) return;
-    const valores = [];
-    for (let i = 0; i < dias; i++) {
-      const input = document.querySelector(`input[data-dia="${i}"][data-user="${visualizando}"]`);
-      valores.push(parseInt(input?.value) || 0);
-    }
-    localStorage.setItem("farm_" + visualizando, JSON.stringify(valores));
-    alert(`Progresso de "${visualizando}" salvo com sucesso!`);
-  }
-
-  function atualizarTotal(nome, isAdmin = false) {
-    let total = 0;
-    for (let i = 0; i < dias; i++) {
-      const input = document.querySelector(`input[data-dia="${i}"][data-user="${nome}"]`);
-      total += parseInt(input?.value) || 0;
-    }
-    localStorage.setItem("farm_" + nome, JSON.stringify(
-      Array.from(document.querySelectorAll(`input[data-user="${nome}"]`)).map(el => parseInt(el.value) || 0)
-    ));
-    const totalSpan = document.getElementById(`total-${nome}`);
-    const statusSpan = document.getElementById(`status-${nome}`);
-    if (totalSpan) totalSpan.textContent = total;
-    if (statusSpan) statusSpan.textContent = total >= metaTotal ? "OK" : "Pendente";
-  }
-
-  function removerUsuarioSelecionado() {
-    const seletor = document.getElementById("seletorUsuarios");
-    const nome = seletor.value;
-    if (!nome) return alert("Nenhum usuário selecionado.");
-    if (!confirm(`Tem certeza que deseja remover o jogador "${nome}"?`)) return;
-    localStorage.removeItem("farm_" + nome);
-    alert(`Jogador "${nome}" removido.`);
-    carregarListaUsuarios();
-    document.getElementById("adminView").innerHTML = "";
-  }
-
-  function exportarCSV() {
-    let csv = "Jogador,Dia 1,Dia 2,Dia 3,Dia 4,Dia 5,Total,Status\n";
-    for (let key in localStorage) {
-      if (key.startsWith("farm_")) {
-        const nome = key.replace("farm_", "");
-        const valores = JSON.parse(localStorage.getItem(key)) || Array(dias).fill(0);
-        const total = valores.reduce((acc, cur) => acc + cur, 0);
-        const status = total >= metaTotal ? "OK" : "Pendente";
-        csv += [nome, ...valores, total, status].join(",") + "\n";
-      }
-    }
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "farm_geral.csv";
-    link.click();
-  }
+async function carregarUsuarioSelecionado() {
+  const nome = document.getElementById("seletorUsuarios").value;
+  visualizando = nome;
+  const progresso = await carregarDados(nome);
+  renderizarTabela(progresso, true);
+}
 </script>
 </body>
 </html>
