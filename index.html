@@ -91,7 +91,7 @@ let usuarioAtual = "";
 let visualizando = "";
 
 async function salvarDados(nome, progresso) {
-  await fetch('http://localhost:5000/salvar', {
+  await fetch('https://cartel021.onrender.com/salvar', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nome, progresso })
@@ -99,7 +99,7 @@ async function salvarDados(nome, progresso) {
 }
 
 async function carregarDados(nome) {
-  const res = await fetch(`http://localhost:5000/usuario/${nome}`);
+  const res = await fetch(`https://cartel021.onrender.com/usuario/${nome}`);
   if (res.ok) {
     const data = await res.json();
     return data[nome];
@@ -108,7 +108,7 @@ async function carregarDados(nome) {
 }
 
 async function carregarListaUsuarios() {
-  const res = await fetch('http://localhost:5000/listar');
+  const res = await fetch('https://cartel021.onrender.com/listar');
   const data = await res.json();
   const seletor = document.getElementById("seletorUsuarios");
   seletor.innerHTML = "";
