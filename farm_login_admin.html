@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Login - Controle de Farm</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #f1f1f1;
+      padding: 20px;
+    }
+    .login, .dashboard, .admin {
+      max-width: 600px;
+      margin: auto;
+      text-align: center;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 6px;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      color: #fff;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #3a7ca5;
+      border: none;
+      color: white;
+      cursor: pointer;
+      margin: 5px 5px 0 5px;
+    }
+    button:hover {
+      background-color: #2e6b8a;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #444;
+    }
+    th {
+      background-color: #2a2a2a;
+    }
+  </style>
+</head>
+<body>
+
+<div class="login" id="loginTela">
+  <h2>Login do Jogador</h2>
+  <input type="text" id="nomeJogador" placeholder="Digite seu nome">
+  <button onclick="login()">Entrar</button>
+</div>
+
+<div class="dashboard" id="painel" style="display:none;">
+  <h2>Bem-vindo, <span id="nomeExibido"></span></h2>
+  <p>Meta diária: <strong>1600</strong> | Meta semanal: <strong>8000</strong></p>
+
+  <table>
+    <thead>
+      <tr><th>Dia</th><th>Componentes</th></tr>
+    </thead>
+    <tbody id="tabelaDias"></tbody>
+  </table>
+
+  <p><strong>Total Farmado:</strong> <span id="totalFarmado">0</span></p>
+  <p><strong>Status:</strong> <span id="statusFarm">Pendente</span></p>
+
+  <button onclick="salvar()">Salvar</button>
+  <button onclick="logout()">Sair</button>
+</div>
+
+<div class="admin" id="adminPanel" style="display:none;">
+  <h2>Painel de Admin - <span id="adminName"></span></h2>
+  <p>Selecione um usuário para visualizar/editar/remover:</p>
+  <select id="seletorUsuarios" onchange="carregarUsuarioSelecionado()"></select><br>
+  <button onclick="removerUsuarioSelecionado()" style="background-color: #a53a3a;">Remover Jogador</button>
+  <div id="adminView"></div>
+  <button onclick="salvarAdmin()">Salvar Alterações</button>
+  <button onclick="exportarCSV()">Exportar CSV</button>
+  <button onclick="logout()">Sair</button>
+</div>
+
+<script>
+  const dias = 5;
+  const metaDiaria = 1600;
+  const metaTotal = dias * metaDiaria;
+  const admins = ['Nabriza', 'Liana', 'Naja'];
+  let usuarioAtual = "";
+  let visualizando = "";
+
+  function login() {
+    const nome = document.getElementById("nomeJogador").value.trim();
+    if (!nome) return;
+
+    usuarioAtual = nome;
+
+    if (admins.includes(nome)) {
+      document.getElementById("adminName").textContent = nome;
+      document.getElementById("loginTela").style.display = "none";
+      document.getElementById("adminPanel").style.display = "block";
+      carregarListaUsuarios();
+    } else {
+      document.getElementById("nomeExibido").textContent = nome;
+      document.getElementById("loginTela").style.display = "none";
+      document.getElementById("painel").style.display = "block";
+      carregarDados(nome);
+    }
+  }
+
+  function logout() {
+    usuarioAtual = "";
+    visualizando = "";
+    document.getElementById("painel").style.display = "none";
+    document.getElementById("adminPanel").style.display = "none";
+    document.getElementById("loginTela").style.display = "block";
+    document.getElementById("nomeJogador").value = "";
+  }
+
+  function carregarListaUsuarios() {
+    const seletor = document.getElementById("seletorUsuarios");
+    seletor.innerHTML = "";
+
+    for (let key in localStorage) {
+      if (key.startsWith("farm_")) {
+        const nome = key.replace("farm_", "");
+        const opt = document.createElement("option");
+        opt.value = nome;
+        opt.textContent = nome;
+        seletor.appendChild(opt);
+      }
+    }
+
+    if (seletor.options.length > 0) {
+      seletor.selectedIndex = 0;
+      carregarUsuarioSelecionado();
+    } else {
+      document.getElementById("adminView").innerHTML = "<p>Nenhum jogador encontrado.</p>";
+    }
+  }
+
+  function carregarUsuarioSelecionado() {
+    const nome = document.getElementById("seletorUsuarios").value;
+    visualizando = nome;
+    carregarDados(nome, true);
+  }
+
+  function carregarDados(nome, isAdmin = false) {
+    const dados = JSON.parse(localStorage.getItem("farm_" + nome)) || Array(dias).fill(0);
+    if (!isAdmin) {
+      const tbody = document.getElementById("tabelaDias");
+      tbody.innerHTML = "";
+      for (let i = 0; i < dias; i++) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>Dia ${i + 1}</td>
+          <td><input type="number" min="0" max="1600" value="${dados[i]}" 
+              onchange="validarLimite(this); atualizarTotal('${nome}', false)" 
+              data-dia="${i}" data-user="${nome}"></td>`;
+        tbody.appendChild(tr);
+      }
+    } else {
+      const html = [`<table><thead><tr><th>Dia</th><th>Componentes</th></tr></thead><tbody>`];
+      for (let i = 0; i < dias; i++) {
+        html.push(`
+          <tr>
+            <td>Dia ${i + 1}</td>
+            <td><input type="number" min="0" max="1600" value="${dados[i]}" 
+                onchange="validarLimite(this); atualizarTotal('${nome}', true)" 
+                data-dia="${i}" data-user="${nome}"></td>
+          </tr>`);
+      }
+      html.push(`</tbody></table>`);
+      html.push(`<p><strong>Total Farmado:</strong> <span id="total-${nome}">0</span></p>`);
+      html.push(`<p><strong>Status:</strong> <span id="status-${nome}">Pendente</span></p>`);
+      document.getElementById("adminView").innerHTML = html.join('');
+    }
+    atualizarTotal(nome, isAdmin);
+  }
+
+  function validarLimite(input) {
+    let valor = parseInt(input.value);
+    if (isNaN(valor) || valor < 0) input.value = 0;
+    else if (valor > 1600) input.value = 1600;
+  }
+
+  function salvar() {
+    const valores = [];
+    for (let i = 0; i < dias; i++) {
+      const val = document.querySelector(`input[data-dia="${i}"][data-user="${usuarioAtual}"]`);
+      valores.push(parseInt(val?.value) || 0);
+    }
+    localStorage.setItem("farm_" + usuarioAtual, JSON.stringify(valores));
+    alert("Progresso salvo!");
+  }
+
+  function salvarAdmin() {
+    if (!visualizando) return;
+    const valores = [];
+    for (let i = 0; i < dias; i++) {
+      const input = document.querySelector(`input[data-dia="${i}"][data-user="${visualizando}"]`);
+      valores.push(parseInt(input?.value) || 0);
+    }
+    localStorage.setItem("farm_" + visualizando, JSON.stringify(valores));
+    alert(`Progresso de "${visualizando}" salvo com sucesso!`);
+  }
+
+  function atualizarTotal(nome, isAdmin = false) {
+    let total = 0;
+    for (let i = 0; i < dias; i++) {
+      const input = document.querySelector(`input[data-dia="${i}"][data-user="${nome}"]`);
+      total += parseInt(input?.value) || 0;
+    }
+    localStorage.setItem("farm_" + nome, JSON.stringify(
+      Array.from(document.querySelectorAll(`input[data-user="${nome}"]`)).map(el => parseInt(el.value) || 0)
+    ));
+    const totalSpan = document.getElementById(`total-${nome}`);
+    const statusSpan = document.getElementById(`status-${nome}`);
+    if (totalSpan) totalSpan.textContent = total;
+    if (statusSpan) statusSpan.textContent = total >= metaTotal ? "OK" : "Pendente";
+  }
+
+  function removerUsuarioSelecionado() {
+    const seletor = document.getElementById("seletorUsuarios");
+    const nome = seletor.value;
+    if (!nome) return alert("Nenhum usuário selecionado.");
+    if (!confirm(`Tem certeza que deseja remover o jogador "${nome}"?`)) return;
+    localStorage.removeItem("farm_" + nome);
+    alert(`Jogador "${nome}" removido.`);
+    carregarListaUsuarios();
+    document.getElementById("adminView").innerHTML = "";
+  }
+
+  function exportarCSV() {
+    let csv = "Jogador,Dia 1,Dia 2,Dia 3,Dia 4,Dia 5,Total,Status\n";
+    for (let key in localStorage) {
+      if (key.startsWith("farm_")) {
+        const nome = key.replace("farm_", "");
+        const valores = JSON.parse(localStorage.getItem(key)) || Array(dias).fill(0);
+        const total = valores.reduce((acc, cur) => acc + cur, 0);
+        const status = total >= metaTotal ? "OK" : "Pendente";
+        csv += [nome, ...valores, total, status].join(",") + "\n";
+      }
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "farm_geral.csv";
+    link.click();
+  }
+</script>
+</body>
+</html>
